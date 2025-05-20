@@ -50,7 +50,7 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
     }
 
     // @inheritdoc IFncyTokenAirdrop
-    function airdrop(address to, uint256 amount) external nonReentrant onlyExecutor {
+    function airdrop(address to, uint256 amount) external override nonReentrant onlyExecutor {
         _totalAirdropAmount += amount;
         _send(to, amount);
     }
@@ -61,12 +61,12 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
     }
 
     // @inheritdoc IFncyTokenAirdrop
-    function isExecutor(address executor) external view returns(bool) {
+    function isExecutor(address executor) external view override returns(bool) {
         return _isExecutor[executor];
     }
 
     // @inheritdoc IFncyTokenAirdrop
-    function getExecutors() external view returns(address[] memory) {
+    function getExecutors() external view override returns(address[] memory) {
         return _executors;
     }
 
