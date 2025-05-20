@@ -74,12 +74,12 @@ contract FncyToken is IFncyToken, ERC20Upgradeable, OwnableUpgradeable, EIP712Up
     }
 
     // @inheritdoc IFncyToken
-    function isMinter(address minter) override public view returns(bool) {
+    function isMinter(address minter) public view override returns(bool) {
         return _isMinter[minter];
     }
 
     // @inheritdoc IFncyToken
-    function addMinter(address minter) override external onlyOwner {
+    function addMinter(address minter) external override onlyOwner {
         if (minter == address(0)) revert InvalidParameter();
         if (_isMinter[minter]) revert AlreadyMinterAddress();
 
@@ -90,7 +90,7 @@ contract FncyToken is IFncyToken, ERC20Upgradeable, OwnableUpgradeable, EIP712Up
     }
 
     // @inheritdoc IFncyToken
-    function removeMinter(address minter) override external onlyOwner {
+    function removeMinter(address minter) external override onlyOwner {
         if (minter == address(0)) revert InvalidParameter();
         if (!_isMinter[minter]) revert NotExistsMinterAddress();
 
@@ -172,21 +172,21 @@ contract FncyToken is IFncyToken, ERC20Upgradeable, OwnableUpgradeable, EIP712Up
     }
 
     // @inheritdoc IFncyToken
-    function isMintingAllowed() public view returns (bool) {
+    function isMintingAllowed() public view override returns (bool) {
         uint256 remainBlock = STOP_MINTING_BLOCK - fncyEndSnapshot;
 
         return block.number <= deployBlock + remainBlock;
     }
 
     // @inheritdoc IFncyToken
-    function remainingMintableSupply() public view returns (uint256) {
+    function remainingMintableSupply() public view override returns (uint256) {
         uint256 _totalSupply = totalSupply();
         if (_totalSupply >= MAX_SUPPLY) return 0;
         return MAX_SUPPLY - _totalSupply;
     }
 
     // @inheritdoc IFncyToken
-    function rescueTokens(uint256 amount) external onlyOwner {
+    function rescueTokens(uint256 amount) external override onlyOwner {
         if (amount == 0) revert InvalidParameter();
 
         uint256 balance = balanceOf(address(this));

@@ -103,4 +103,9 @@ interface IFncyToken is IERC20Upgradeable {
      * @notice 초기 배포 후 20억개를 바로 발행하지 않는 케이스로 진행할 경우 해당 함수를 통해 몇 개의 토큰을 발행할 수 있는지 체크
      */
     function remainingMintableSupply() external view returns (uint256);
+    /**
+     * @dev Minting 가능 토큰 개수 조회
+     * @param amount 컨트랙트에서 출금할 양
+     */
+    function rescueTokens(uint256 amount) external;
 }
