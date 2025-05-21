@@ -4,12 +4,17 @@ import {IFncyToken} from "./interfaces/IFncyToken.sol";
 import {IFncyTokenAirdrop} from "./interfaces/IFncyTokenAirdrop.sol";
 import {OwnableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/security/ReentrancyGuardUpgradeable.sol";
-import {ReentrancyGuard} from "../lib/openzeppelin-contracts/contracts/security/ReentrancyGuard.sol";
 
 contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     constructor() {
         _disableInitializers();
     }
+    /*
+    ########################
+    ###      Constant    ###
+    ########################
+    */
+    uint256 public constant MAX_BATCH_SIZE = 100; // 최대 배치 크기
 
     /*
     ########################
@@ -28,36 +33,118 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
     */
     IFncyToken private _fncyToken;
     uint256 private _totalAirdropAmount;
+    uint256 private _airdropLimit;
+
     mapping(address => bool) private _isExecutor;
     address[] private _executors;
 
+    mapping(address => uint256) private _receivedAmount;
+
     function initialize(address fncyToken, address initExecutor) public initializer {
         __Ownable_init();
+        __ReentrancyGuard_init();
+
         if (fncyToken == address(0)) revert InvalidParameter();
 
         address sender = _msgSender();
+        address executorToAdd = initExecutor == address(0) ? sender : initExecutor;
 
-        if (initExecutor == address(0)) {
-            initExecutor = sender;
-        } else if (initExecutor != sender) {
-            addAirdropExecutor(sender);
+        if (executorToAdd != sender) {
+            _isExecutor[sender] = true;
+            _executors.push(sender);
+            emit AddAirdropExecutor(sender);
         }
 
-        addAirdropExecutor(initExecutor);
+        // 초기 executor 추가
+        _isExecutor[executorToAdd] = true;
+        _executors.push(executorToAdd);
+        emit AddAirdropExecutor(executorToAdd);
 
+        // 토큰 설정
         _fncyToken = IFncyToken(fncyToken);
         emit ChangeTargetToken(address(0), fncyToken);
+
+        // 에어드랍 제한 없음으로 초기화
+        _airdropLimit = type(uint256).max;
     }
 
     // @inheritdoc IFncyTokenAirdrop
     function airdrop(address to, uint256 amount) external override nonReentrant onlyExecutor {
+        _checkAirdropLimit(amount);
+
         _totalAirdropAmount += amount;
-        _send(to, amount);
+        _receivedAmount[to] += amount;
+
+        bool success = _send(to, amount);
+        require(success, "Airdrop transfer failed");
+
+        emit TokenAirdropped(to, amount);
+    }
+
+    function batchAirdrop(address[] calldata recipients, uint256[] calldata amounts) external override nonReentrant onlyExecutor {
+        if (recipients.length == 0) revert InvalidParameter();
+        if (recipients.length != amounts.length) revert InvalidParameter();
+        if (recipients.length > MAX_BATCH_SIZE) revert BatchSizeTooLarge(recipients.length, MAX_BATCH_SIZE);
+
+        uint256 totalAmount = 0;
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            if (recipients[i] == address(0)) revert InvalidParameter();
+            if (amounts[i] == 0) revert InvalidParameter();
+            totalAmount += amounts[i];
+        }
+
+        _checkAirdropLimit(totalAmount);
+
+        _totalAirdropAmount += totalAmount;
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            _receivedAmount[recipients[i]] += amounts[i];
+            bool success = _send(recipients[i], amounts[i]);
+            require(success, "Batch airdrop transfer failed");
+            emit TokenAirdropped(recipients[i], amounts[i]);
+        }
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function setAirdropLimit(uint256 limit) external override onlyOwner {
+        uint256 oldLimit = _airdropLimit;
+        _airdropLimit = limit;
+
+        emit AirdropLimitChanged(oldLimit, limit);
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function changeTargetToken(address newToken) external onlyOwner {
+        if (newToken == address(0)) revert InvalidParameter();
+        address oldToken = address(_fncyToken);
+
+        _fncyToken = IFncyToken(newToken);
+
+        emit ChangeTargetToken(oldToken, newToken);
     }
 
     // @inheritdoc IFncyTokenAirdrop
     function getTotalAirdropAmount() external view override returns(uint256) {
         return _totalAirdropAmount;
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function getAirdropLimit() external view override returns(uint256) {
+        return _airdropLimit;
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function getRemainingAirdropAmount() external view override returns(uint256) {
+        if (_totalAirdropAmount >= _airdropLimit) {
+            return 0;
+        }
+        return _airdropLimit - _totalAirdropAmount;
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function getReceivedAmount(address recipient) external view override returns(uint256) {
+        return _receivedAmount[recipient];
     }
 
     // @inheritdoc IFncyTokenAirdrop
@@ -86,18 +173,23 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         if (executor == address(0)) revert InvalidParameter();
         if (!_isExecutor[executor]) revert NotExistsAirdropExecutor(executor);
 
-        int256 indexOf = -1;
-        for (uint256 i = 0; i < _executors.length; i++) {
-            if (_executors[i] != executor) continue;
-            indexOf = int256(i);
-            break;
+        uint256 length = _executors.length;
+        uint256 indexOf = 0;
+        bool found = false;
+
+        for (uint256 i = 0; i < length; i++) {
+            if (_executors[i] == executor) {
+                indexOf = i;
+                found = true;
+                break;
+            }
         }
 
-        if (indexOf >= 0) {
-            // 배열 순서 재조정
-            if (_executors.length > 1 && uint256(indexOf) != _executors.length - 1) {
-                _executors[uint256(indexOf)] = _executors[_executors.length - 1];
+        if (found) {
+            if (indexOf != length - 1) {
+                _executors[indexOf] = _executors[length - 1];
             }
+
             _executors.pop();
             _isExecutor[executor] = false;
 
@@ -105,16 +197,37 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         }
     }
 
+    /**
+     * @dev 에어드랍 실행 권한 검증
+     * @param executor 검증할 주소
+     * @return 권한 유무
+     */
     function _validateAirdropExecutor(address executor) internal view returns(bool) {
         if (!_isExecutor[executor]) revert UnauthorizedAirdropExecute(executor);
         return true;
     }
 
-    function _send(address to, uint256 amount) internal returns(bool){
+    /**
+     * @dev 토큰 전송 함수
+     * @param to 수신자
+     * @param amount 수량
+     * @return 성공 여부
+     */
+    function _send(address to, uint256 amount) internal returns(bool) {
         if(to == address(0)) revert InvalidParameter();
         if(amount == 0) revert InvalidParameter();
         if(address(_fncyToken) == address(0)) revert TokenNotSet();
 
         return _fncyToken.transfer(to, amount);
+    }
+
+    /**
+     * @dev 에어드랍 제한량 체크
+     * @param amount 체크할 양
+     */
+    function _checkAirdropLimit(uint256 amount) internal view {
+        if (_totalAirdropAmount + amount > _airdropLimit) {
+            revert MaxAirdropLimitExceeded();
+        }
     }
 }
