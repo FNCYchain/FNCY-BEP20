@@ -20,6 +20,11 @@ interface IFncyTokenAirdrop {
     error MaxAirdropLimitExceeded();
     // @dev 배치 크기가 너무 큼
     error BatchSizeTooLarge(uint256 requested, uint256 maxSize);
+    // @dev Contract Pool 에어드랍 시 밸런스 부족
+    error InsufficientContractBalance(uint256 balance, uint256 amount);
+    // @dev Contract Pool 에 오너가 입금 시 Approve 되어 있지 않을 시
+    error InsufficientAllowance(uint256 allowance, uint256 amount);
+
     /*
     ########################
     ###      Event       ###
@@ -31,7 +36,16 @@ interface IFncyTokenAirdrop {
     event AirdropLimitChanged(uint256 oldLimit, uint256 newLimit);
     event TokenRescued(address token, address to, uint256 amount);
     event TokenAirdropped(address to, uint256 amount);
+    event PoolDeposited(address from, uint256 amount);
+    event PoolWithdrawn(address to, uint256 amount);
 
+    /**
+     * @dev 에어드랍 상태 조회
+     * @return totalExecuted 총 에어드랍 실행 횟수
+     * @return totalRecipients 총 고유 수신자 수
+     * @return totalAmount 총 에어드랍 금액
+     */
+    function getAirdropStatus() external view returns (uint256 totalExecuted, uint256 totalRecipients, uint256 totalAmount);
     /**
      * @dev 현재까지 진행한 Airdrop 총액
      * @return 총 에어드랍 금액
@@ -98,5 +112,34 @@ interface IFncyTokenAirdrop {
      * @return 수령한 에어드랍 총량
      */
     function getReceivedAmount(address recipient) external view returns(uint256);
-
+    /**
+     * @dev 컨트랙트가 보유한 토큰 잔액 조회
+     * @notice 편의성을 위해 생성한 함수
+     * @return 컨트랙트의 토큰 잔액
+     */
+    function getContractTokenBalance() external view returns(uint256);
+    /**
+     * @dev 오너가 컨트랙트에 토큰 입금 (에어드랍 풀 충전용)
+     * @notice 호출 전에 반드시 approve(airdropContract, amount) 필요
+     * @notice 단순 토큰 입금해도 무방하나, 기록을 위해 생성함.
+     * @param amount 입금할 토큰 수량
+     */
+    function depositToPool(uint256 amount) external;
+    /**
+     * @dev 오너가 컨트랙트에서 토큰 출금 (미사용 토큰 회수용)
+     * @param amount 출금할 토큰 수량
+     */
+    function withdrawFromPool(uint256 amount) external;
+    /**
+     * @dev 컨트랙트가 보유한 토큰으로 에어드랍 실행
+     * @param to 에어드랍 수신자
+     * @param amount 에어드랍 수량
+     */
+    function airdropFromPool(address to, uint256 amount) external;
+    /**
+     * @dev 컨트랙트가 보유한 토큰으로 배치 에어드랍 실행
+     * @param recipients 수신자 배열
+     * @param amounts 수량 배열
+     */
+    function batchAirdropFromPool(address[] calldata recipients, uint256[] calldata amounts) external;
 }

@@ -32,13 +32,16 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
     ########################
     */
     IFncyToken private _fncyToken;
-    uint256 private _totalAirdropAmount;
     uint256 private _airdropLimit;
+    uint256 private _totalAirdropAmount;
+    uint256 private _totalAirdropCount;
+    uint256 private _uniqueRecipientCount;
 
     mapping(address => bool) private _isExecutor;
     address[] private _executors;
 
     mapping(address => uint256) private _receivedAmount;
+    mapping(address => bool) private _hasReceived;
 
     function initialize(address fncyToken, address initExecutor) public initializer {
         __Ownable_init();
@@ -72,10 +75,20 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
     function airdrop(address to, uint256 amount) external override nonReentrant onlyExecutor {
         _checkAirdropLimit(amount);
 
+        uint256 allowance = _fncyToken.allowance(_msgSender(), address(this));
+        if (allowance < amount) revert InsufficientAllowance(allowance, amount);
+
         _totalAirdropAmount += amount;
         _receivedAmount[to] += amount;
 
-        bool success = _send(to, amount);
+        _totalAirdropCount++;
+        if (!_hasReceived[to]) {
+            _hasReceived[to] = true;
+            _uniqueRecipientCount++;
+        }
+
+
+        bool success = _fncyToken.transferFrom(_msgSender(), to, amount);
         require(success, "Airdrop transfer failed");
 
         emit TokenAirdropped(to, amount);
@@ -96,12 +109,80 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
 
         _checkAirdropLimit(totalAmount);
 
+        uint256 allowance = _fncyToken.allowance(_msgSender(), address(this));
+        if (allowance < totalAmount) revert InsufficientAllowance(allowance, totalAmount);
+
         _totalAirdropAmount += totalAmount;
 
         for (uint256 i = 0; i < recipients.length; i++) {
             _receivedAmount[recipients[i]] += amounts[i];
-            bool success = _send(recipients[i], amounts[i]);
+
+            _totalAirdropCount++;
+            if (!_hasReceived[recipients[i]]) {
+                _hasReceived[recipients[i]] = true;
+                _uniqueRecipientCount++;
+            }
+
+            bool success = _fncyToken.transferFrom(_msgSender(),recipients[i], amounts[i]);
             require(success, "Batch airdrop transfer failed");
+            emit TokenAirdropped(recipients[i], amounts[i]);
+        }
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function airdropFromPool(address to, uint256 amount) external override nonReentrant onlyExecutor {
+        _checkAirdropLimit(amount);
+        uint256 contractBalance = _fncyToken.balanceOf(address(this));
+        if (contractBalance < amount) revert InsufficientContractBalance(contractBalance, amount);
+
+        _totalAirdropAmount += amount;
+        _receivedAmount[to] += amount;
+
+        _totalAirdropCount++;
+        if (!_hasReceived[to]) {
+            _hasReceived[to] = true;
+            _uniqueRecipientCount++;
+        }
+
+        bool success = _send(to, amount);
+        require(success, "Pool airdrop transfer failed");
+
+        emit TokenAirdropped(to, amount);
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function batchAirdropFromPool(address[] calldata recipients, uint256[] calldata amounts) external override nonReentrant onlyExecutor {
+        if (recipients.length == 0) revert InvalidParameter();
+        if (recipients.length != amounts.length) revert InvalidParameter();
+        if (recipients.length > MAX_BATCH_SIZE) revert BatchSizeTooLarge(recipients.length, MAX_BATCH_SIZE);
+
+        uint256 totalAmount = 0;
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            if (recipients[i] == address(0)) revert InvalidParameter();
+            if (amounts[i] == 0) revert InvalidParameter();
+            totalAmount += amounts[i];
+        }
+
+        _checkAirdropLimit(totalAmount);
+
+        // 컨트랙트의 토큰 잔액 확인
+        uint256 contractBalance = _fncyToken.balanceOf(address(this));
+        if (contractBalance < totalAmount) revert InsufficientContractBalance(contractBalance, totalAmount);
+
+        _totalAirdropAmount += totalAmount;
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            _receivedAmount[recipients[i]] += amounts[i];
+
+            _totalAirdropCount++;
+            if (!_hasReceived[recipients[i]]) {
+                _hasReceived[recipients[i]] = true;
+                _uniqueRecipientCount++;
+            }
+
+            bool success = _send(recipients[i], amounts[i]);
+            require(success, "Pool batch airdrop transfer failed");
             emit TokenAirdropped(recipients[i], amounts[i]);
         }
     }
@@ -122,6 +203,10 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         _fncyToken = IFncyToken(newToken);
 
         emit ChangeTargetToken(oldToken, newToken);
+    }
+
+    function getAirdropStatus() external view override returns(uint256 totalExecuted, uint256 totalRecipients, uint256 totalAmount) {
+        return (_totalAirdropCount, _uniqueRecipientCount, _totalAirdropAmount);
     }
 
     // @inheritdoc IFncyTokenAirdrop
@@ -155,6 +240,38 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
     // @inheritdoc IFncyTokenAirdrop
     function getExecutors() external view override returns(address[] memory) {
         return _executors;
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function getContractTokenBalance() external view override returns(uint256) {
+        return _fncyToken.balanceOf(address(this));
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function depositToPool(uint256 amount) external override onlyOwner {
+        if (amount == 0) revert InvalidParameter();
+
+        // transferFrom 전에 allowance 확인
+        uint256 allowance = _fncyToken.allowance(_msgSender(), address(this));
+        if (allowance < amount) revert InsufficientAllowance(allowance, amount);
+
+        bool success = _fncyToken.transferFrom(_msgSender(), address(this), amount);
+        require(success, "Pool deposit failed");
+
+        emit PoolDeposited(_msgSender(), amount);
+    }
+
+    // @inheritdoc IFncyTokenAirdrop
+    function withdrawFromPool(uint256 amount) external override onlyOwner {
+        if (amount == 0) revert InvalidParameter();
+
+        uint256 contractBalance = _fncyToken.balanceOf(address(this));
+        if (contractBalance < amount) revert InsufficientContractBalance(contractBalance, amount);
+
+        bool success = _fncyToken.transfer(_msgSender(), amount);
+        require(success, "Pool withdrawal failed");
+
+        emit PoolWithdrawn(_msgSender(), amount);
     }
 
     // @inheritdoc IFncyTokenAirdrop
