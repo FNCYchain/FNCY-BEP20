@@ -158,6 +158,7 @@ contract FncyToken is IFncyToken, ERC20Upgradeable, OwnableUpgradeable, EIP712Up
     }
 
     // @inheritdoc IFncyToken
+    // Lock 기능이 선해되어야함
     function softBurnWithAdmin(uint256 amount) external override onlyOwner {
         if (amount == 0) revert InvalidParameter();
         uint256 balance = balanceOf(address(this));

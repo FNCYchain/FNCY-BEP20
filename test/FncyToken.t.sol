@@ -188,7 +188,6 @@ contract FncyTokenTest is Test {
         _burn(_foundation, 1 ether);
         vm.stopPrank();
     }
-
     // @dev Burning - Fail (Invalid Parameter - Zero Amount)
     function test_BurningFailZeroAmount() public {
         vm.startPrank(_foundation);
