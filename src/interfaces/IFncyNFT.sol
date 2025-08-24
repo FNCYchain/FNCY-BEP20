@@ -57,12 +57,6 @@ interface IFncyNFT is IERC721Upgradeable {
     function getTotalBurned() external view returns(uint256 totalBurned);
 
     /**
-     * @dev 실제 유통 중인 NFT 수량 반환 (총 발행량 - 소각량)
-     * @return circulating 유통 중인 NFT 수량
-     */
-    function getCirculating() external view returns(uint256 circulating);
-
-    /**
      * @dev Minter 권한 확인
      * @param minter 확인할 주소
      * @return isMinter Minter 권한 유무
@@ -108,25 +102,6 @@ interface IFncyNFT is IERC721Upgradeable {
      * @param tokenIds 소각할 토큰 ID 배열
      */
     function batchBurn(uint256[] calldata tokenIds) external;
-
-    /**
-     * @dev NFT 잠금 (토큰 소유자만 가능)
-     * @param tokenId 잠글 토큰 ID
-     */
-    function lock(uint256 tokenId) external;
-
-    /**
-     * @dev NFT 잠금 해제 (토큰 소유자만 가능)
-     * @param tokenId 잠금 해제할 토큰 ID
-     */
-    function unlock(uint256 tokenId) external;
-
-    /**
-     * @dev NFT 잠금 상태 확인
-     * @param tokenId 확인할 토큰 ID
-     * @return isLocked 잠금 상태
-     */
-    function isLocked(uint256 tokenId) external view returns(bool isLocked);
 
     /**
      * @dev 베이스 URI 설정 (onlyOwner)
