@@ -72,10 +72,10 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
     }
 
     // @inheritdoc IFncyTokenAirdrop
-    function airdrop(address to, uint256 amount) external override nonReentrant onlyExecutor {
+    function airdrop(address from, address to, uint256 amount) external override nonReentrant onlyExecutor {
         _checkAirdropLimit(amount);
 
-        uint256 allowance = _fncyToken.allowance(_msgSender(), address(this));
+        uint256 allowance = _fncyToken.allowance(from, address(this));
         if (allowance < amount) revert InsufficientAllowance(allowance, amount);
 
         _totalAirdropAmount += amount;
@@ -94,7 +94,7 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         emit TokenAirdropped(to, amount);
     }
 
-    function batchAirdrop(address[] calldata recipients, uint256[] calldata amounts) external override nonReentrant onlyExecutor {
+    function batchAirdrop(address[] calldata froms, address[] calldata recipients, uint256[] calldata amounts) external override nonReentrant onlyExecutor {
         if (recipients.length == 0) revert InvalidParameter();
         if (recipients.length != amounts.length) revert InvalidParameter();
         if (recipients.length > MAX_BATCH_SIZE) revert BatchSizeTooLarge(recipients.length, MAX_BATCH_SIZE);
@@ -108,13 +108,10 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         }
 
         _checkAirdropLimit(totalAmount);
-
-        uint256 allowance = _fncyToken.allowance(_msgSender(), address(this));
-        if (allowance < totalAmount) revert InsufficientAllowance(allowance, totalAmount);
-
         _totalAirdropAmount += totalAmount;
 
         for (uint256 i = 0; i < recipients.length; i++) {
+
             _receivedAmount[recipients[i]] += amounts[i];
 
             _totalAirdropCount++;
@@ -123,7 +120,7 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
                 _uniqueRecipientCount++;
             }
 
-            bool success = _fncyToken.transferFrom(_msgSender(),recipients[i], amounts[i]);
+            bool success = _fncyToken.transferFrom(froms[i],recipients[i], amounts[i]);
             require(success, "Batch airdrop transfer failed");
             emit TokenAirdropped(recipients[i], amounts[i]);
         }
