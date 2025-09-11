@@ -88,7 +88,7 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         }
 
 
-        bool success = _fncyToken.transferFrom(_msgSender(), to, amount);
+        bool success = _fncyToken.transferFrom(from, to, amount);
         require(success, "Airdrop transfer failed");
 
         emit TokenAirdropped(to, amount);
