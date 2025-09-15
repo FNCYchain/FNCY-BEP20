@@ -4,8 +4,12 @@ import {IFncyToken} from "./interfaces/IFncyToken.sol";
 import {IFncyTokenAirdrop} from "./interfaces/IFncyTokenAirdrop.sol";
 import {OwnableUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/security/ReentrancyGuardUpgradeable.sol";
+import {SafeERC20Upgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import {IERC20Upgradeable} from "../lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/IERC20Upgradeable.sol";
 
 contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+    using SafeERC20Upgradeable for IERC20Upgradeable;
+
     constructor() {
         _disableInitializers();
     }
@@ -72,23 +76,27 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
     }
 
     // @inheritdoc IFncyTokenAirdrop
+    // @dev This function handles ERC20 tokens only, not ETH transfers
+    // @param from Address that provides the tokens (must have approved allowance)
+    // @param to Address that receives the airdrop tokens
+    // @param amount Amount of tokens to transfer
     function airdrop(address from, address to, uint256 amount) external override nonReentrant onlyExecutor {
         _checkAirdropLimit(amount);
 
         uint256 allowance = _fncyToken.allowance(from, address(this));
         if (allowance < amount) revert InsufficientAllowance(allowance, amount);
 
+        // State changes before external call (CEI pattern)
         _totalAirdropAmount += amount;
         _receivedAmount[to] += amount;
-
         _totalAirdropCount++;
         if (!_hasReceived[to]) {
             _hasReceived[to] = true;
             _uniqueRecipientCount++;
         }
-        
-        bool success = _fncyToken.transferFrom(from, to, amount);
-        require(success, "Airdrop transfer failed");
+
+        // External call last
+        IERC20Upgradeable(address(_fncyToken)).safeTransferFrom(from, to, amount);
 
         emit TokenAirdropped(to, amount);
     }
@@ -107,20 +115,21 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         }
 
         _checkAirdropLimit(totalAmount);
+
+        // State changes before external calls (CEI pattern)
         _totalAirdropAmount += totalAmount;
-
         for (uint256 i = 0; i < recipients.length; i++) {
-
             _receivedAmount[recipients[i]] += amounts[i];
-
             _totalAirdropCount++;
             if (!_hasReceived[recipients[i]]) {
                 _hasReceived[recipients[i]] = true;
                 _uniqueRecipientCount++;
             }
+        }
 
-            bool success = _fncyToken.transferFrom(froms[i],recipients[i], amounts[i]);
-            require(success, "Batch airdrop transfer failed");
+        // External calls last
+        for (uint256 i = 0; i < recipients.length; i++) {
+            IERC20Upgradeable(address(_fncyToken)).safeTransferFrom(froms[i], recipients[i], amounts[i]);
             emit TokenAirdropped(recipients[i], amounts[i]);
         }
     }
@@ -131,17 +140,17 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         uint256 contractBalance = _fncyToken.balanceOf(address(this));
         if (contractBalance < amount) revert InsufficientContractBalance(contractBalance, amount);
 
+        // State changes before external call (CEI pattern)
         _totalAirdropAmount += amount;
         _receivedAmount[to] += amount;
-
         _totalAirdropCount++;
         if (!_hasReceived[to]) {
             _hasReceived[to] = true;
             _uniqueRecipientCount++;
         }
 
-        bool success = _send(to, amount);
-        require(success, "Pool airdrop transfer failed");
+        // External call last
+        _send(to, amount);
 
         emit TokenAirdropped(to, amount);
     }
@@ -166,19 +175,20 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         uint256 contractBalance = _fncyToken.balanceOf(address(this));
         if (contractBalance < totalAmount) revert InsufficientContractBalance(contractBalance, totalAmount);
 
+        // State changes before external calls (CEI pattern)
         _totalAirdropAmount += totalAmount;
-
         for (uint256 i = 0; i < recipients.length; i++) {
             _receivedAmount[recipients[i]] += amounts[i];
-
             _totalAirdropCount++;
             if (!_hasReceived[recipients[i]]) {
                 _hasReceived[recipients[i]] = true;
                 _uniqueRecipientCount++;
             }
+        }
 
-            bool success = _send(recipients[i], amounts[i]);
-            require(success, "Pool batch airdrop transfer failed");
+        // External calls last
+        for (uint256 i = 0; i < recipients.length; i++) {
+            _send(recipients[i], amounts[i]);
             emit TokenAirdropped(recipients[i], amounts[i]);
         }
     }
@@ -251,8 +261,7 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         uint256 allowance = _fncyToken.allowance(_msgSender(), address(this));
         if (allowance < amount) revert InsufficientAllowance(allowance, amount);
 
-        bool success = _fncyToken.transferFrom(_msgSender(), address(this), amount);
-        require(success, "Pool deposit failed");
+        IERC20Upgradeable(address(_fncyToken)).safeTransferFrom(_msgSender(), address(this), amount);
 
         emit PoolDeposited(_msgSender(), amount);
     }
@@ -264,8 +273,7 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
         uint256 contractBalance = _fncyToken.balanceOf(address(this));
         if (contractBalance < amount) revert InsufficientContractBalance(contractBalance, amount);
 
-        bool success = _fncyToken.transfer(_msgSender(), amount);
-        require(success, "Pool withdrawal failed");
+        IERC20Upgradeable(address(_fncyToken)).safeTransfer(_msgSender(), amount);
 
         emit PoolWithdrawn(_msgSender(), amount);
     }
@@ -324,14 +332,13 @@ contract FncyTokenAirdrop is IFncyTokenAirdrop, OwnableUpgradeable, ReentrancyGu
      * @dev 토큰 전송 함수
      * @param to 수신자
      * @param amount 수량
-     * @return 성공 여부
      */
-    function _send(address to, uint256 amount) internal returns(bool) {
+    function _send(address to, uint256 amount) internal {
         if(to == address(0)) revert InvalidParameter();
         if(amount == 0) revert InvalidParameter();
         if(address(_fncyToken) == address(0)) revert TokenNotSet();
 
-        return _fncyToken.transfer(to, amount);
+        IERC20Upgradeable(address(_fncyToken)).safeTransfer(to, amount);
     }
 
     /**
