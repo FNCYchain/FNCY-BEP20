@@ -206,7 +206,7 @@ contract FncyTokenAirdropTest is Test {
 
         // 에어드랍 실행
         uint256 airdropAmount = 1_000 ether;
-        airdropContract.airdrop(_user1, airdropAmount);
+        airdropContract.airdrop(_executor, _user1, airdropAmount);
 
         // 에어드랍 후 상태 확인
         uint256 finalExecutorBalance = fncyToken.balanceOf(_executor);
@@ -256,7 +256,11 @@ contract FncyTokenAirdropTest is Test {
         uint256 initialExecutorBalance = fncyToken.balanceOf(_executor);
 
         // 배치 에어드랍 실행
-        airdropContract.batchAirdrop(recipients, amounts);
+        address[] memory froms = new address[](recipients.length);
+        for (uint256 i = 0; i < recipients.length; i++) {
+            froms[i] = _executor;
+        }
+        airdropContract.batchAirdrop(froms, recipients, amounts);
 
         // 에어드랍 후 상태 확인
         uint256 finalExecutorBalance = fncyToken.balanceOf(_executor);
@@ -283,7 +287,7 @@ contract FncyTokenAirdropTest is Test {
     function test_AirdropFailNotExecutor() public {
         vm.startPrank(_user1);
         vm.expectPartialRevert(IFncyTokenAirdrop.UnauthorizedAirdropExecute.selector);
-        airdropContract.airdrop(_user2, 1 ether);
+        airdropContract.airdrop(_executor, _user2, 1 ether);
         vm.stopPrank();
     }
 
@@ -297,7 +301,7 @@ contract FncyTokenAirdropTest is Test {
 
         vm.startPrank(_executor);
         vm.expectPartialRevert(IFncyTokenAirdrop.InsufficientAllowance.selector);
-        airdropContract.airdrop(_user1, 1_000 ether);
+        airdropContract.airdrop(_executor, _user1, 1_000 ether);
         vm.stopPrank();
     }
 
@@ -459,7 +463,7 @@ contract FncyTokenAirdropTest is Test {
 
         // 제한량 초과 에어드랍 시도
         vm.expectPartialRevert(IFncyTokenAirdrop.MaxAirdropLimitExceeded.selector);
-        airdropContract.airdrop(_user1, limitAmount + 1 ether);
+        airdropContract.airdrop(_executor, _user1, limitAmount + 1 ether);
 
         vm.stopPrank();
     }
@@ -481,8 +485,13 @@ contract FncyTokenAirdropTest is Test {
             amounts[i] = 1 ether;
         }
 
+        address[] memory froms = new address[](recipients.length);
+        for (uint256 i = 0; i < recipients.length; i++) {
+            froms[i] = _executor;
+        }
+
         vm.expectPartialRevert(IFncyTokenAirdrop.BatchSizeTooLarge.selector);
-        airdropContract.batchAirdrop(recipients, amounts);
+        airdropContract.batchAirdrop(froms, recipients, amounts);
 
         vm.stopPrank();
     }

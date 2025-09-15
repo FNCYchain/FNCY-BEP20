@@ -125,12 +125,14 @@ contract FncyNFT is IFncyNFT, ERC721Upgradeable, ERC721URIStorageUpgradeable, Ow
         if (to == address(0) || tokenId == 0) revert InvalidParameter();
         if (_currentTokenId > MAX_SUPPLY) revert MaxSupplyExceeded(1, MAX_SUPPLY - (_currentTokenId - 1));
 
-        _safeMint(to, tokenId);
-        _setTokenURI(tokenId, _tokenURI);
-
+        // State changes before external call (CEI pattern)
         if (tokenId >= _currentTokenId) {
             _currentTokenId = tokenId + 1;
         }
+
+        // External calls
+        _safeMint(to, tokenId);
+        _setTokenURI(tokenId, _tokenURI);
 
         emit Mint(to, tokenId, _tokenURI);
     }
@@ -144,20 +146,21 @@ contract FncyNFT is IFncyNFT, ERC721Upgradeable, ERC721URIStorageUpgradeable, Ow
         uint256 remaining = MAX_SUPPLY - (_currentTokenId - 1);
         if (tokenIds.length > remaining) revert MaxSupplyExceeded(tokenIds.length, remaining);
 
+        // State changes before external calls (CEI pattern)
         uint256 maxTokenId = _currentTokenId - 1;
-
         for (uint256 i = 0; i < tokenIds.length; i++) {
             if (tokenIds[i] == 0) revert InvalidParameter();
-
-            _safeMint(to, tokenIds[i]);
-            _setTokenURI(tokenIds[i], tokenURIs[i]);
-
             if (tokenIds[i] > maxTokenId) {
                 maxTokenId = tokenIds[i];
             }
         }
-
         _currentTokenId = maxTokenId + 1;
+
+        // External calls
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            _safeMint(to, tokenIds[i]);
+            _setTokenURI(tokenIds[i], tokenURIs[i]);
+        }
 
         emit BatchMint(to, tokenIds, tokenURIs);
     }

@@ -96,16 +96,18 @@ interface IFncyTokenAirdrop {
     /**
      * @dev Token Airdrop
      * @notice Executor 권한을 가진 주소가 실행해야함.
+     * @param from Airdrop 을 위임받은 출금 주소
      * @param to Airdrop 을 통해 물량을 전달 받을 주소
      * @param amount Airdrop 을 통해 전달 받을 물량
      */
-    function airdrop(address to, uint256 amount) external;
+    function airdrop(address from, address to, uint256 amount) external;
     /**
      * @dev 배치 에어드랍 실행
+     * @param froms 에어드랍 출금 주소 배열
      * @param recipients 수신자 배열
      * @param amounts 수량 배열
      */
-    function batchAirdrop(address[] calldata recipients, uint256[] calldata amounts) external;
+    function batchAirdrop(address[] calldata froms, address[] calldata recipients, uint256[] calldata amounts) external;
     /**
      * @dev 주소별 에어드랍 수령량 조회
      * @param recipient 조회할 주소
