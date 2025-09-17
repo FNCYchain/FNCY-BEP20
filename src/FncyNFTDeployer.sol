@@ -93,19 +93,17 @@ contract FncyNFTDeployer is Ownable {
 
         address targetOwner = newOwner == address(0) ? msg.sender : newOwner;
 
-        // 1. Proxy Admin 배포
+        // 1. Proxy Admin 배포 (external call이 없는 작업)
         if (ordProxyAdmin == address(0)) {
             proxyAdmin = address(new ProxyAdmin());
-            ProxyAdmin(proxyAdmin).transferOwnership(targetOwner);
         } else {
             proxyAdmin = ordProxyAdmin;
         }
 
-
-        // 2. NFT 구현체 배포
+        // 2. NFT 구현체 배포 (external call이 없는 작업)
         implementation = address(new FncyNFT());
 
-        // 3. Transparent Proxy 배포
+        // 3. Transparent Proxy 배포 (external call이 없는 작업)
         proxy = address(new TransparentUpgradeableProxy(
             implementation,
             proxyAdmin,
@@ -117,11 +115,14 @@ contract FncyNFTDeployer is Ownable {
             )
         ));
 
-        // 4. 소유권 이전
-        FncyNFT(proxy).transferOwnership(targetOwner);
-
-        // 5. 배포 정보 저장
+        // 4. State changes before external calls (CEI pattern)
         _recordDeployment(proxyAdmin, proxy, implementation, msg.sender, name, symbol);
+
+        // 5. External calls last
+        if (ordProxyAdmin == address(0)) {
+            ProxyAdmin(proxyAdmin).transferOwnership(targetOwner);
+        }
+        FncyNFT(proxy).transferOwnership(targetOwner);
 
         emit NFTContractDeployed(
             msg.sender,
