@@ -133,15 +133,10 @@ contract FncyToken is IFncyToken, ERC20Upgradeable, OwnableUpgradeable, EIP712Up
     }
 
     // @inheritdoc IFncyToken
-    function burn(address account, uint256 amount) external override onlyMinter {
-        if (amount == 0) revert InvalidParameter();
-        if (circulating < amount) revert InsufficientCirculating(circulating, amount);
-
-        circulating -= amount;
-        totalBurned += amount;
-
-        _burn(account, amount);
-        emit Burn(account, amount);
+    // 총 발행량, 유통량 변경
+    // 거래소 대응 시 해당 함수 삭제 후 배포
+    function burn(uint256 amount) external {
+        super._burn(msg.sender, amount);
     }
 
     // @inheritdoc IFncyToken
@@ -159,6 +154,7 @@ contract FncyToken is IFncyToken, ERC20Upgradeable, OwnableUpgradeable, EIP712Up
 
     // @inheritdoc IFncyToken
     // Lock 기능이 선해되어야함
+    // 총 발행량은 그대로, 유통량만 변경
     function softBurnWithAdmin(uint256 amount) external override onlyOwner {
         if (amount == 0) revert InvalidParameter();
         uint256 balance = balanceOf(address(this));

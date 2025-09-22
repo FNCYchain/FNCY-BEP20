@@ -76,10 +76,9 @@ interface IFncyToken is IERC20Upgradeable {
     /**
      * @dev Token Burn
      * @notice Minter 권한을 가진 주소만이 실행 가능, Total Supply 가 감소됨.
-     * @param account 소각 대상 주소
      * @param amount 소각 토큰 수량
      */
-    function burn(address account, uint256 amount) external;
+    function burn(uint256 amount) external;
     /**
      * @dev Token Lock
      * @notice 토큰을 가지고 있는 유저가 실행 가능함. Contract 에 Lock
